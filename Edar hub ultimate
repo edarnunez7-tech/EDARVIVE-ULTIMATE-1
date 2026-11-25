@@ -1,0 +1,370 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+local camera = workspace.CurrentCamera
+
+-- Wait for PlayerGui
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ControlPanelGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Main draggable frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 400, 0, 500) -- increased height for new buttons
+mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+mainFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 2
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Parent = mainFrame
+
+-- Minimize button (top‑right)
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Name = "MinimizeButton"
+minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+minimizeButton.Position = UDim2.new(1, -35, 0, 5)
+minimizeButton.BackgroundTransparency = 0.5
+minimizeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+minimizeButton.Text = "_"
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.Parent = mainFrame
+
+-- Container for all controls (will be hidden when minimized)
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, -20, 1, -50)
+contentFrame.Position = UDim2.new(0, 10, 0, 40)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+
+-- Helper to create a TextButton
+local function createButton(name, text, posY)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0, 180, 0, 30)
+    btn.Position = UDim2.new(0, 10, 0, posY)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Text = text
+    btn.Parent = contentFrame
+    return btn
+end
+
+-- Existing buttons
+local aimbotButton = createButton("AimbotButton", "Aimbot: OFF", 0)
+local infiniteJumpButton = createButton("InfiniteJumpButton", "Infinite Jump: OFF", 40)
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Name = "SpeedLabel"
+speedLabel.Size = UDim2.new(0, 180, 0, 20)
+speedLabel.Position = UDim2.new(0, 10, 0, 80)
+speedLabel.BackgroundTransparency = 1
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.Text = "Speed Multiplier (e.g., 2)"
+speedLabel.Parent = contentFrame
+
+local speedBox = Instance.new("TextBox")
+speedBox.Name = "SpeedBox"
+speedBox.Size = UDim2.new(0, 180, 0, 30)
+speedBox.Position = UDim2.new(0, 10, 0, 105)
+speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBox.ClearTextOnFocus = false
+speedBox.Text = "1"
+speedBox.Parent = contentFrame
+
+local applySpeedButton = createButton("ApplySpeedButton", "Apply Speed", 140)
+local teleportButton = createButton("TeleportButton", "Teleport Behind Enemy", 180)
+local redColorButton = createButton("RedColorButton", "Red Color", 220)
+local blueColorButton = createButton("BlueColorButton", "Blue Color", 260)
+
+-- New buttons
+local noclipButton = createButton("NoclipButton", "Noclip: OFF", 300)
+local sniperButton = createButton("SniperButton", "Sniper Mode: OFF", 340)
+local invisibilityButton = createButton("InvisibilityButton", "Invisibility: OFF", 380)
+
+-- State variables
+local aimbotEnabled = false
+local infiniteJumpEnabled = false
+local noclipEnabled = false
+local sniperEnabled = false
+local invisibilityEnabled = false
+local isMinimized = false
+
+local originalSize = mainFrame.Size
+local originalPosition = mainFrame.Position
+local minimizedSize = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, 30)
+
+-- Dragging logic
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+local function updateInput(input)
+    local delta = input.Position - dragStart
+    mainFrame.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateInput(input)
+    end
+end)
+
+-- Minimize / expand functionality
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    contentFrame.Visible = not isMinimized
+    minimizeButton.Text = isMinimized and "+" or "_"
+    local targetSize = isMinimized and minimizedSize or originalSize
+    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(mainFrame, tweenInfo, {Size = targetSize}):Play()
+end
+
+minimizeButton.MouseButton1Click:Connect(toggleMinimize)
+
+-- Helper: get nearest enemy character (excluding self)
+local function getNearestEnemy()
+    local closest = nil
+    local shortestDist = math.huge
+    local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+            local otherRoot = other.Character.HumanoidRootPart
+            local dist = (myRoot.Position - otherRoot.Position).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                closest = other.Character
+            end
+        end
+    end
+    return closest
+end
+
+-- Store original transparencies for invisibility toggle
+local originalTransparencies = {}
+
+local function applyInvisibility(enable)
+    local char = player.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if enable then
+                -- Save original if not saved yet
+                if originalTransparencies[part] == nil then
+                    originalTransparencies[part] = part.Transparency
+                end
+                part.Transparency = 1
+                part.CanCollide = false -- optional, keep noclip behaviour
+            else
+                if originalTransparencies[part] ~= nil then
+                    part.Transparency = originalTransparencies[part]
+                end
+                part.CanCollide = true
+            end
+        elseif part:IsA("Decal") then
+            if enable then
+                if originalTransparencies[part] == nil then
+                    originalTransparencies[part] = part.Transparency
+                end
+                part.Transparency = 1
+            else
+                if originalTransparencies[part] ~= nil then
+                    part.Transparency = originalTransparencies[part]
+                end
+            end
+        end
+    end
+    if not enable then
+        originalTransparencies = {}
+    end
+end
+
+-- Aimbot loop
+RunService.RenderStepped:Connect(function()
+    if aimbotEnabled then
+        local enemyChar = getNearestEnemy()
+        if enemyChar and enemyChar:FindFirstChild("Head") then
+            local headPos = enemyChar.Head.Position
+            local camPos = camera.CFrame.Position
+            camera.CFrame = CFrame.new(camPos, headPos)
+        end
+    end
+    if noclipEnabled then
+        local char = player.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+    if sniperEnabled then
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        local sniperTool = nil
+        if player.Character then
+            sniperTool = player.Character:FindFirstChild("SniperRifle")
+        end
+        if not sniperTool and backpack then
+            sniperTool = backpack:FindFirstChild("SniperRifle")
+        end
+        if not sniperTool then
+            sniperTool = ReplicatedStorage:FindFirstChild("SniperRifle")
+        end
+        if sniperTool then
+            if sniperTool.Parent ~= player.Character then
+                sniperTool.Parent = player.Character
+            end
+        end
+    end
+    if invisibilityEnabled then
+        applyInvisibility(true)
+    end
+end)
+
+-- Button handlers
+aimbotButton.MouseButton1Click:Connect(function()
+    aimbotEnabled = not aimbotEnabled
+    aimbotButton.Text = aimbotEnabled and "Aimbot: ON" or "Aimbot: OFF"
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if infiniteJumpEnabled then
+        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+infiniteJumpButton.MouseButton1Click:Connect(function()
+    infiniteJumpEnabled = not infiniteJumpEnabled
+    infiniteJumpButton.Text = infiniteJumpEnabled and "Infinite Jump: ON" or "Infinite Jump: OFF"
+end)
+
+applySpeedButton.MouseButton1Click:Connect(function()
+    local multiplier = tonumber(speedBox.Text)
+    if multiplier and multiplier > 0 then
+        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.WalkSpeed = 16 * multiplier
+        end
+    else
+        warn("Invalid speed multiplier entered.")
+    end
+end)
+
+teleportButton.MouseButton1Click:Connect(function()
+    local enemyChar = getNearestEnemy()
+    if enemyChar and enemyChar:FindFirstChild("HumanoidRootPart") then
+        local enemyHRP = enemyChar.HumanoidRootPart
+        local behindCFrame = enemyHRP.CFrame * CFrame.new(0, 0, -5)
+        local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if myHRP then
+            myHRP.CFrame = behindCFrame
+        end
+    end
+end)
+
+redColorButton.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Color = Color3.fromRGB(255, 0, 0)
+        end
+    end
+end)
+
+blueColorButton.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Color = Color3.fromRGB(0, 0, 255)
+        end
+    end
+end)
+
+noclipButton.MouseButton1Click:Connect(function()
+    noclipEnabled = not noclipEnabled
+    noclipButton.Text = noclipEnabled and "Noclip: ON" or "Noclip: OFF"
+    if not noclipEnabled then
+        local char = player.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end)
+
+sniperButton.MouseButton1Click:Connect(function()
+    sniperEnabled = not sniperEnabled
+    sniperButton.Text = sniperEnabled and "Sniper Mode: ON" or "Sniper Mode: OFF"
+end)
+
+invisibilityButton.MouseButton1Click:Connect(function()
+    invisibilityEnabled = not invisibilityEnabled
+    invisibilityButton.Text = invisibilityEnabled and "Invisibility: ON" or "Invisibility: OFF"
+    applyInvisibility(invisibilityEnabled)
+end)
+
+-- Reset walk speed and re‑apply states on respawn
+player.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.WalkSpeed = 16
+    -- Restore noclip
+    if noclipEnabled then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+    -- Restore invisibility if it was active
+    if invisibilityEnabled then
+        applyInvisibility(true)
+    end
+end)
